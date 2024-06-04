@@ -1,0 +1,15 @@
+[package]
+name = "audio_3dxp"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+glob = "0.3"
+libc = "0.2"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+widestring = "1.1"
