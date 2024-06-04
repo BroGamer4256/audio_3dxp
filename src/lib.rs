@@ -16,7 +16,7 @@ static mut ORIGINAL_BGM_SET: u8 = 0;
 
 fn original_bgm_sets() -> Vec<BgmSet> {
 	let maxi3 = BgmSet {
-		name: String::new(),
+		name: String::from("3"),
 		imagepath: String::from("data/sprite-us/menu_p_sound_logo_maxi3.png"),
 		songs: vec![
 			BgmSong {
@@ -102,7 +102,7 @@ fn original_bgm_sets() -> Vec<BgmSet> {
 		],
 	};
 	let maxi2 = BgmSet {
-		name: String::new(),
+		name: String::from("2"),
 		imagepath: String::from("data/sprite-us/menu_p_sound_logo_maxi1.png"),
 		songs: vec![
 			BgmSong {
@@ -196,7 +196,7 @@ fn original_bgm_sets() -> Vec<BgmSet> {
 		],
 	};
 	let maxir = BgmSet {
-		name: String::new(),
+		name: String::from("R"),
 		imagepath: String::from("data/sprite-us/menu_p_sound_logo_wanganR.png"),
 		songs: vec![
 			BgmSong {
