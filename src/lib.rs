@@ -8,7 +8,8 @@ use std::ffi::{CStr, CString};
 use std::mem::transmute;
 use widestring::*;
 
-static mut BASIC_WIDE_STRING: Option<extern "C" fn(*mut *mut c_void, *mut u32, *const c_void)> = None;
+static mut BASIC_WIDE_STRING: Option<extern "C" fn(*mut *mut c_void, *mut u32, *const c_void)> =
+	None;
 static mut BGM_SETS: Vec<BgmSet> = vec![];
 static mut LAST_BGM_SET: i32 = 0;
 static mut PLAYED_AUDIO_ID: i32 = 0;
@@ -100,6 +101,7 @@ fn original_bgm_sets() -> Vec<BgmSet> {
 				name: String::from("Phantom of Blue"),
 			},
 		],
+		stories: None,
 	};
 	let maxi2 = BgmSet {
 		name: String::from("2"),
@@ -194,6 +196,7 @@ fn original_bgm_sets() -> Vec<BgmSet> {
 				name: String::from("Holy Land Anthem"),
 			},
 		],
+		stories: None,
 	};
 	let maxir = BgmSet {
 		name: String::from("R"),
@@ -248,6 +251,7 @@ fn original_bgm_sets() -> Vec<BgmSet> {
 				name: String::from("Akio's Theme"),
 			},
 		],
+		stories: None,
 	};
 	vec![maxi3, maxi2, maxir]
 }
@@ -256,6 +260,7 @@ struct BgmSet {
 	name: String,
 	imagepath: String,
 	songs: Vec<BgmSong>,
+	stories: Option<Vec<String>>,
 }
 
 struct BgmSong {
@@ -269,7 +274,6 @@ struct NsAudio {
 }
 
 static mut ORIGINAL_GET_TITLE_ID: Option<extern "C" fn(NsAudio, i32) -> NsAudio> = None;
-#[no_mangle]
 unsafe extern "C" fn get_title_id(id: i32) -> NsAudio {
 	if id < 1 << 8 {
 		let this = NsAudio {
@@ -282,7 +286,6 @@ unsafe extern "C" fn get_title_id(id: i32) -> NsAudio {
 	get_title_index(set, index)
 }
 
-#[no_mangle]
 unsafe extern "C" fn get_title_index(set: i32, index: i32) -> NsAudio {
 	let title = if index == 0 {
 		U32CString::from_str_unchecked("RANDOM")
@@ -302,7 +305,11 @@ unsafe extern "C" fn get_title_index(set: i32, index: i32) -> NsAudio {
 	let mut this = NsAudio {
 		name: std::ptr::null_mut(),
 	};
-	BASIC_WIDE_STRING.unwrap()(&mut this.name as *mut *mut _, title.into_raw(), std::ptr::null());
+	BASIC_WIDE_STRING.unwrap()(
+		&mut this.name as *mut *mut _,
+		title.into_raw(),
+		std::ptr::null(),
+	);
 	this
 }
 
@@ -311,17 +318,21 @@ unsafe extern "C" fn set_relative_volume(this: *mut f32) {
 	this.byte_offset(0x30).write(2.5);
 }
 
+unsafe fn get_random_song(set: i32) -> i32 {
+	let bgm_set = BGM_SETS.get(set as usize);
+	let bgm_set = match bgm_set {
+		Some(set) => set,
+		None => return 0,
+	};
+	let length = bgm_set.songs.len();
+	let mut rng = rand::thread_rng();
+	let index = rng.gen_range(1..=length) as i32;
+	(set + 1) << 8 | index
+}
+
 unsafe extern "C" fn get_bgm_id(set: i32, index: i32) -> i32 {
 	if index == 0 {
-		let bgm_set = BGM_SETS.get(set as usize);
-		if let Some(bgm_set) = bgm_set {
-			let length = bgm_set.songs.len();
-			let mut rng = rand::thread_rng();
-			let index = rng.gen_range(1..=length) as i32;
-			(set + 1) << 8 | index
-		} else {
-			0
-		}
+		get_random_song(set)
 	} else {
 		(set + 1) << 8 | index
 	}
@@ -457,7 +468,8 @@ unsafe extern "C" fn play_stream(_: *mut c_void, id: i32, sndtype: i32) {
 	STREAM_MANAGER_PLAY.unwrap()(AUDIO_STREAM.read(), id, sndtype)
 }
 
-static mut ORIGINAL_LOAD_CARD: Option<extern "C" fn(*mut u8, *const c_char, *const c_char, bool)> = None;
+static mut ORIGINAL_LOAD_CARD: Option<extern "C" fn(*mut u8, *const c_char, *const c_char, bool)> =
+	None;
 unsafe extern "C" fn load_card(data: *mut u8, a2: *const c_char, a3: *const c_char, a4: bool) {
 	ORIGINAL_LOAD_CARD.unwrap()(data, a2, a3, a4);
 	#[derive(serde::Deserialize)]
@@ -472,7 +484,10 @@ unsafe extern "C" fn load_card(data: *mut u8, a2: *const c_char, a3: *const c_ch
 		Ok(bgm) => bgm,
 		Err(_) => return,
 	};
-	let set = BGM_SETS.iter().enumerate().find(|(_, set)| set.name == bgm.bgm);
+	let set = BGM_SETS
+		.iter()
+		.enumerate()
+		.find(|(_, set)| set.name == bgm.bgm);
 	let (index, _) = match set {
 		Some(set) => set,
 		None => return,
@@ -481,10 +496,48 @@ unsafe extern "C" fn load_card(data: *mut u8, a2: *const c_char, a3: *const c_ch
 	data.byte_offset(0x16D).write(index as u8);
 }
 
-static mut ORIGINAL_SAVE_CARD: Option<extern "C" fn(*mut u8, bool, *const c_char)> = None;
-unsafe extern "C" fn save_card(data: *mut u8, a2: bool, a3: *const c_char) {
-	data.byte_offset(0x16D).write(ORIGINAL_BGM_SET);
-	ORIGINAL_SAVE_CARD.unwrap()(data, a2, a3);
+static mut ORIGINAL_SAVE_CARD: Option<extern "C" fn(*mut u8, bool, *const u8) -> *const u8> = None;
+unsafe extern "C" fn save_card(data: *mut u8, a2: bool, a3: *const u8) -> *const u8 {
+	let bgm = data.byte_offset(0x16D);
+	let original_bgm = bgm.read();
+	bgm.write(ORIGINAL_BGM_SET);
+	let ret = ORIGINAL_SAVE_CARD.unwrap()(data, a2, a3);
+	bgm.write(original_bgm);
+	ret
+}
+
+static mut ORIGINAL_GET_STORY_BGM: Option<extern "C" fn(*mut i32, i32, i32) -> i32> = None;
+unsafe extern "C" fn get_story_bgm(episode: *mut i32, a2: i32, set: i32) -> i32 {
+	if a2 > 0 {
+		return -1;
+	}
+	if set < 3 || episode.is_null() {
+		return ORIGINAL_GET_STORY_BGM.unwrap()(episode, a2, set);
+	}
+	let episode_no = episode.read();
+	let bgm_set = BGM_SETS.get(set as usize);
+	let bgm_set = match bgm_set {
+		Some(set) => set,
+		None => return ORIGINAL_GET_STORY_BGM.unwrap()(episode, a2, set),
+	};
+	let stories = match &bgm_set.stories {
+		Some(stories) => stories,
+		None => return dbg!(get_random_song(set)),
+	};
+	let song_name = match stories.get(episode_no as usize) {
+		Some(song) => song,
+		None => return dbg!(get_random_song(set)),
+	};
+	let index = match bgm_set
+		.songs
+		.iter()
+		.enumerate()
+		.find(|(_, song)| &song.name == song_name)
+	{
+		Some((index, _)) => index + 1,
+		None => return dbg!(get_random_song(set)),
+	};
+	get_bgm_id(set, index as i32)
 }
 
 #[repr(u8)]
@@ -516,6 +569,7 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 				#[derive(serde::Deserialize)]
 				struct Songs {
 					song: Vec<Song>,
+					stories: Option<Vec<String>>,
 				}
 
 				#[derive(serde::Deserialize)]
@@ -533,7 +587,7 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 					Err(_) => continue,
 				};
 
-				let songs = songs
+				let bgm_songs = songs
 					.song
 					.iter()
 					.map(|song| {
@@ -554,7 +608,8 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 						.to_string_lossy()
 						.to_string(),
 					imagepath: image.to_string_lossy().to_string(),
-					songs,
+					songs: bgm_songs,
+					stories: songs.stories,
 				};
 				BGM_SETS.push(bgm);
 			}
@@ -627,6 +682,10 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 	ORIGINAL_SAVE_CARD = Some(transmute(hook::hook_symbol(
 		"_ZN14clV386CardData4dataEbPc",
 		save_card as *const (),
+	)));
+	ORIGINAL_GET_STORY_BGM = Some(transmute(hook::hook_symbol(
+		"_ZNK14clEffStoryType6getBgmEii",
+		get_story_bgm as *const (),
 	)));
 
 	match version {
