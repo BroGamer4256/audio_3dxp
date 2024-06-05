@@ -522,11 +522,11 @@ unsafe extern "C" fn get_story_bgm(episode: *mut i32, a2: i32, set: i32) -> i32 
 	};
 	let stories = match &bgm_set.stories {
 		Some(stories) => stories,
-		None => return dbg!(get_random_song(set)),
+		None => return get_random_song(set),
 	};
 	let song_name = match stories.get(episode_no as usize) {
 		Some(song) => song,
-		None => return dbg!(get_random_song(set)),
+		None => return get_random_song(set),
 	};
 	let index = match bgm_set
 		.songs
@@ -535,7 +535,7 @@ unsafe extern "C" fn get_story_bgm(episode: *mut i32, a2: i32, set: i32) -> i32 
 		.find(|(_, song)| &song.name == song_name)
 	{
 		Some((index, _)) => index + 1,
-		None => return dbg!(get_random_song(set)),
+		None => return get_random_song(set),
 	};
 	get_bgm_id(set, index as i32)
 }
