@@ -20,7 +20,7 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: build
-        args: --release
+        args: --release --target i586-unknown-linux-gnu
     - uses: actions/upload-artifact@v4
       with:
         name: dist
