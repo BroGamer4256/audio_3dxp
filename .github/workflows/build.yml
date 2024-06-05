@@ -1,0 +1,35 @@
+name: Build and upload artifact
+
+on: [ push, pull_request ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: |
+        # make it so we can download 32 bit libs
+        sudo dpkg --add-architecture i386
+
+        # update package list
+        sudo apt-get update
+
+        # install dependecies
+        sudo apt-get install -y build-essential gcc-multilib g++-multilib
+
+        # add 32bit target to rust
+        rustup target add i586-unknown-linux-gnu
+
+        # build
+        cargo build --release --target i586-unknown-linux-gnu
+
+        mkdir -p out/
+        cp target/i586-unknown-linux-gnu/release/libaudio_3dxp.so out/
+    - uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: out
