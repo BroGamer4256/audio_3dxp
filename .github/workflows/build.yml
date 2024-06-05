@@ -10,15 +10,13 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v3
-    - name: Install rust nightly
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: nightly
-        override: true
-        target: i586-unknown-linux-gnu
     - name: Build
       run: |
+        sudo apt-get update
         sudo apt-get install -y build-essential gcc-multilib g++-multilib
+        rustup toolchain install nightly
+        rustup target add --toolchain nightly i586-unknown-linux-gnu
+        rustup override set nightly
         cargo b --release --target i586-unknown-linux-gnu
     - uses: actions/upload-artifact@v4
       with:
