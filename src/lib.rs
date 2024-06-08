@@ -319,10 +319,8 @@ unsafe extern "C" fn set_relative_volume(this: *mut f32) {
 }
 
 unsafe fn get_random_song(set: i32) -> i32 {
-	let bgm_set = BGM_SETS.get(set as usize);
-	let bgm_set = match bgm_set {
-		Some(set) => set,
-		None => return 0,
+	let Some(bgm_set) = BGM_SETS.get(set as usize) else {
+		return 0;
 	};
 	let length = bgm_set.songs.len();
 	let mut rng = rand::thread_rng();
@@ -476,21 +474,18 @@ unsafe extern "C" fn load_card(data: *mut u8, a2: *const c_char, a3: *const c_ch
 	struct Bgm {
 		bgm: String,
 	}
-	let text = match std::fs::read_to_string("plugins/audio.toml") {
-		Ok(text) => text,
-		Err(_) => return,
+	let Ok(text) = std::fs::read_to_string("plugins/audio.toml") else {
+		return;
 	};
-	let bgm: Bgm = match toml::from_str(&text) {
-		Ok(bgm) => bgm,
-		Err(_) => return,
+	let Ok(bgm) = toml::from_str::<Bgm>(&text) else {
+		return;
 	};
-	let set = BGM_SETS
+	let Some((index, _)) = BGM_SETS
 		.iter()
 		.enumerate()
-		.find(|(_, set)| set.name == bgm.bgm);
-	let (index, _) = match set {
-		Some(set) => set,
-		None => return,
+		.find(|(_, set)| set.name == bgm.bgm)
+	else {
+		return;
 	};
 	ORIGINAL_BGM_SET = data.byte_offset(0x16D).read();
 	data.byte_offset(0x16D).write(index as u8);
@@ -515,27 +510,22 @@ unsafe extern "C" fn get_story_bgm(episode: *mut i32, a2: i32, set: i32) -> i32 
 		return ORIGINAL_GET_STORY_BGM.unwrap()(episode, a2, set);
 	}
 	let episode_no = episode.read();
-	let bgm_set = BGM_SETS.get(set as usize);
-	let bgm_set = match bgm_set {
-		Some(set) => set,
-		None => return ORIGINAL_GET_STORY_BGM.unwrap()(episode, a2, set),
+	let Some(bgm_set) = BGM_SETS.get(set as usize) else {
+		return ORIGINAL_GET_STORY_BGM.unwrap()(episode, a2, set);
 	};
-	let stories = match &bgm_set.stories {
-		Some(stories) => stories,
-		None => return get_random_song(set),
+	let Some(stories) = &bgm_set.stories else {
+		return get_random_song(set);
 	};
-	let song_name = match stories.get(episode_no as usize) {
-		Some(song) => song,
-		None => return get_random_song(set),
+	let Some(song_name) = stories.get(episode_no as usize) else {
+		return get_random_song(set);
 	};
-	let index = match bgm_set
+	let Some((index, _)) = bgm_set
 		.songs
 		.iter()
 		.enumerate()
 		.find(|(_, song)| &song.name == song_name)
-	{
-		Some((index, _)) => index + 1,
-		None => return get_random_song(set),
+	else {
+		return get_random_song(set);
 	};
 	get_bgm_id(set, index as i32)
 }
@@ -578,13 +568,11 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 					file: String,
 				}
 
-				let text = match std::fs::read_to_string(config) {
-					Ok(text) => text,
-					Err(_) => continue,
+				let Ok(text) = std::fs::read_to_string(config) else {
+					continue;
 				};
-				let songs: Songs = match toml::from_str(&text) {
-					Ok(songs) => songs,
-					Err(_) => continue,
+				let Ok(songs) = toml::from_str::<Songs>(&text) else {
+					continue;
 				};
 
 				let bgm_songs = songs
