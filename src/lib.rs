@@ -18,7 +18,7 @@ static mut ORIGINAL_BGM_SET: u8 = 0;
 fn original_bgm_sets() -> Vec<BgmSet> {
 	let maxi3 = BgmSet {
 		name: String::from("3"),
-		imagepath: String::from("data/sprite-us/menu_p_sound_logo_maxi3.png"),
+		imagepath: String::new(),
 		songs: vec![
 			BgmSong {
 				filepath: String::from("data/sound/bgm/maxi3plus/wm3DX_P_race_01.wav"),
@@ -105,7 +105,7 @@ fn original_bgm_sets() -> Vec<BgmSet> {
 	};
 	let maxi2 = BgmSet {
 		name: String::from("2"),
-		imagepath: String::from("data/sprite-us/menu_p_sound_logo_maxi1.png"),
+		imagepath: String::new(),
 		songs: vec![
 			BgmSong {
 				filepath: String::from("data/sound/bgm/maxi2/wm2_01.wav"),
@@ -200,7 +200,7 @@ fn original_bgm_sets() -> Vec<BgmSet> {
 	};
 	let maxir = BgmSet {
 		name: String::from("R"),
-		imagepath: String::from("data/sprite-us/menu_p_sound_logo_wanganR.png"),
+		imagepath: String::new(),
 		songs: vec![
 			BgmSong {
 				filepath: String::from("data/sound/bgm/r/wmr_01.wav"),
@@ -382,9 +382,14 @@ unsafe extern "C" fn get_next_bgm(set: i32, index: i32) -> i32 {
 	}
 }
 
+static mut ORIGINAL_GET_BGM_ICON: Option<extern "C" fn(i32, i32) -> i32> = None;
 unsafe extern "C" fn get_bgm_icon(set: i32, _id: i32) -> i32 {
 	LAST_BGM_SET = set;
-	0x1652
+	if set > 2 {
+		ORIGINAL_GET_BGM_ICON.unwrap()(0, 0)
+	} else {
+		ORIGINAL_GET_BGM_ICON.unwrap()(set, 0)
+	}
 }
 
 static mut ORIGINAL_LOAD_IMAGE: Option<extern "C" fn(*mut c_void, *const c_char) -> i32> = None;
@@ -393,7 +398,7 @@ unsafe extern "C" fn load_image(this: *mut c_void, filepath: *const c_char) -> i
 		return ORIGINAL_LOAD_IMAGE.unwrap()(this, filepath);
 	}
 	let path = CStr::from_ptr(filepath).to_str().unwrap();
-	if path == "data/sprite-us/menu_p_sound_logo_maxi3.png" {
+	if path.ends_with("menu_p_sound_logo_maxi3.png") && LAST_BGM_SET > 2 {
 		let set = BGM_SETS.get(LAST_BGM_SET as usize);
 		if let Some(set) = set {
 			let path = CString::new(set.imagepath.clone()).unwrap();
@@ -466,37 +471,101 @@ unsafe extern "C" fn play_stream(_: *mut c_void, id: i32, sndtype: i32) {
 	STREAM_MANAGER_PLAY.unwrap()(AUDIO_STREAM.read(), id, sndtype)
 }
 
-static mut ORIGINAL_LOAD_CARD: Option<extern "C" fn(*mut u8, *const c_char, *const c_char, bool)> =
-	None;
-unsafe extern "C" fn load_card(data: *mut u8, a2: *const c_char, a3: *const c_char, a4: bool) {
-	ORIGINAL_LOAD_CARD.unwrap()(data, a2, a3, a4);
+unsafe fn load_card() -> usize {
 	#[derive(serde::Deserialize)]
 	struct Bgm {
 		bgm: String,
 	}
 	let Ok(text) = std::fs::read_to_string("plugins/audio.toml") else {
-		return;
+		return 0;
 	};
 	let Ok(bgm) = toml::from_str::<Bgm>(&text) else {
-		return;
+		return 0;
 	};
 	let Some((index, _)) = BGM_SETS
 		.iter()
 		.enumerate()
 		.find(|(_, set)| set.name == bgm.bgm)
 	else {
-		return;
+		return 0;
 	};
-	ORIGINAL_BGM_SET = data.byte_offset(0x16D).read();
-	data.byte_offset(0x16D).write(index as u8);
+	index
 }
 
-static mut ORIGINAL_SAVE_CARD: Option<extern "C" fn(*mut u8, bool, *const u8) -> *const u8> = None;
-unsafe extern "C" fn save_card(data: *mut u8, a2: bool, a3: *const u8) -> *const u8 {
+static mut ORIGINAL_LOAD_CARD_V386: Option<extern "C" fn(*mut u8, *const c_char, *const c_char, bool)> =
+	None;
+unsafe extern "C" fn load_card_v386(
+	data: *mut u8,
+	a2: *const c_char,
+	a3: *const c_char,
+	a4: bool,
+) {
+	ORIGINAL_LOAD_CARD_V386.unwrap()(data, a2, a3, a4);
+	ORIGINAL_BGM_SET = data.byte_offset(0x16D).read();
+	data.byte_offset(0x16D).write(load_card() as u8);
+}
+
+static mut ORIGINAL_LOAD_CARD_V363: Option<extern "C" fn(*mut u8, *const c_char, *const c_char)> =
+	None;
+unsafe extern "C" fn load_card_v363(
+	data: *mut u8,
+	a2: *const c_char,
+	a3: *const c_char,
+) {
+	ORIGINAL_LOAD_CARD_V363.unwrap()(data, a2, a3);
+	ORIGINAL_BGM_SET = data.byte_offset(0x16D).read();
+	data.byte_offset(0x16D).write(load_card() as u8);
+}
+
+
+static mut ORIGINAL_LOAD_CARD_V337: Option<extern "C" fn(*mut u8, *const c_char)> =
+	None;
+unsafe extern "C" fn load_card_v337(
+	data: *mut u8,
+	a2: *const c_char,
+) {
+	ORIGINAL_LOAD_CARD_V337.unwrap()(data, a2);
+	ORIGINAL_BGM_SET = data.byte_offset(0x169).read();
+	data.byte_offset(0x169).write(load_card() as u8);
+}
+
+static mut ORIGINAL_SAVE_CARD_V386: Option<extern "C" fn(*mut u8, bool, *const u8) -> *const u8> = None;
+unsafe extern "C" fn save_card_v386(
+	data: *mut u8,
+	a2: bool,
+	a3: *const u8,
+) -> *const u8 {
 	let bgm = data.byte_offset(0x16D);
 	let original_bgm = bgm.read();
 	bgm.write(ORIGINAL_BGM_SET);
-	let ret = ORIGINAL_SAVE_CARD.unwrap()(data, a2, a3);
+	let ret = ORIGINAL_SAVE_CARD_V386.unwrap()(data, a2, a3);
+	bgm.write(original_bgm);
+	ret
+}
+
+static mut ORIGINAL_SAVE_CARD_V363: Option<extern "C" fn(*mut u8, bool, *const u8) -> *const u8> = None;
+unsafe extern "C" fn save_card_v363(
+	data: *mut u8,
+	a2: bool,
+	a3: *const u8,
+) -> *const u8 {
+	let bgm = data.byte_offset(0x16D);
+	let original_bgm = bgm.read();
+	bgm.write(ORIGINAL_BGM_SET);
+	let ret = ORIGINAL_SAVE_CARD_V363.unwrap()(data, a2, a3);
+	bgm.write(original_bgm);
+	ret
+}
+
+static mut ORIGINAL_SAVE_CARD_V337: Option<extern "C" fn(*mut u8, bool) -> *const u8> = None;
+unsafe extern "C" fn save_card_v337(
+	data: *mut u8,
+	a2: bool,
+) -> *const u8 {
+	let bgm = data.byte_offset(0x169);
+	let original_bgm = bgm.read();
+	bgm.write(ORIGINAL_BGM_SET);
+	let ret = ORIGINAL_SAVE_CARD_V337.unwrap()(data, a2);
 	bgm.write(original_bgm);
 	ret
 }
@@ -531,10 +600,18 @@ unsafe extern "C" fn get_story_bgm(episode: *mut i32, a2: i32, set: i32) -> i32 
 }
 
 #[repr(u8)]
+#[derive(Clone, Copy)]
 pub enum GameVersion {
 	Unknown = 0,
-	Japan = 1,
-	Export = 2,
+	DxpJP = 1,
+	DxpEN = 2,
+	DxpCN = 3,
+	DxJP = 4,
+	DxEN = 5,
+	DxCN = 6,
+	BaseJP = 7,
+	BaseEN = 8,
+	BaseCN = 9,
 }
 
 #[no_mangle]
@@ -639,10 +716,10 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 		"_ZN3Gap3Gfx7igImage4loadEPKc",
 		load_image as *const (),
 	)));
-	hook::hook_symbol(
+	ORIGINAL_GET_BGM_ICON = Some(transmute(hook::hook_symbol(
 		"_ZN11nsMenuCheck16getBgmSelectIconEii",
 		get_bgm_icon as *const (),
-	);
+	)));
 	hook::hook_symbol(
 		"_ZN11nsMenuCheck10getBgmIconEiN7nsAudio9emBgmTypeE",
 		get_bgm_icon as *const (),
@@ -663,27 +740,65 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 	STREAM_MANAGER_PLAY = Some(transmute(hook::get_symbol(
 		"_ZN19clAudioStreamManage4playEN7nsAudio9emBgmTypeENS0_12emSndCtlTypeE",
 	)));
-	ORIGINAL_LOAD_CARD = Some(transmute(hook::hook_symbol(
-		"_ZN14clV386CardData6assignEPKcPcb",
-		load_card as *const (),
-	)));
-	ORIGINAL_SAVE_CARD = Some(transmute(hook::hook_symbol(
-		"_ZN14clV386CardData4dataEbPc",
-		save_card as *const (),
-	)));
+
+	match version {
+		GameVersion::DxpJP | GameVersion::DxpEN | GameVersion::DxpCN => {
+			ORIGINAL_LOAD_CARD_V386 = Some(transmute(hook::hook_symbol(
+				"_ZN14clV386CardData6assignEPKcPcb",
+				load_card_v386 as *const (),
+			)));
+			ORIGINAL_SAVE_CARD_V386 = Some(transmute(hook::hook_symbol(
+				"_ZN14clV386CardData4dataEbPc",
+				save_card_v386 as *const (),
+			)));
+		}
+		GameVersion::DxJP | GameVersion::DxEN | GameVersion::DxCN => {
+			ORIGINAL_LOAD_CARD_V363 = Some(transmute(hook::hook_symbol(
+				"_ZN14clV363CardData6assignEPKcPc",
+				load_card_v363 as *const (),
+			)));
+			ORIGINAL_SAVE_CARD_V363 = Some(transmute(hook::hook_symbol(
+				"_ZN14clV363CardData4dataEbPc",
+				save_card_v363 as *const (),
+			)));
+		}
+		GameVersion::BaseJP | GameVersion::BaseEN | GameVersion::BaseCN => {
+			ORIGINAL_LOAD_CARD_V337 = Some(transmute(hook::hook_symbol(
+				"_ZN10clV337Card6assignEPKc",
+				load_card_v337 as *const (),
+			)));
+			ORIGINAL_SAVE_CARD_V337 = Some(transmute(hook::hook_symbol(
+				"_ZN10clV337Card4dataEb",
+				save_card_v337 as *const (),
+			)));
+		}
+		_ => {
+			panic!("Unknown game version")
+		}
+	}
+
 	ORIGINAL_GET_STORY_BGM = Some(transmute(hook::hook_symbol(
 		"_ZNK14clEffStoryType6getBgmEii",
 		get_story_bgm as *const (),
 	)));
 
 	match version {
-		GameVersion::Japan => {
+		GameVersion::DxpJP => {
 			hook::write_memory(0x87EEA2C as *mut (), &[0x90, 0x90, 0x90]);
 		}
-		GameVersion::Export => {
+		GameVersion::DxpEN => {
 			hook::write_memory(0x87EF4FC as *mut (), &[0x90, 0x90, 0x90]);
 		}
-		GameVersion::Unknown => {
+		GameVersion::DxEN => {
+			hook::write_memory(0x878168E as *mut (), &[0x90, 0x90, 0x90]);
+		}
+		GameVersion::BaseJP => {
+			hook::write_memory(0x84FCA6A as *mut (), &[0x90, 0x90, 0x90]);
+		}
+		GameVersion::BaseEN => {
+			hook::write_memory(0x84FCC6A as *mut (), &[0x90, 0x90, 0x90]);
+		}
+		_ => {
 			panic!("Unknown game version");
 		}
 	}
