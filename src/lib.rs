@@ -432,10 +432,10 @@ unsafe extern "C" fn load_wav_impl(this: *mut c_void, filepath: *const c_char) {
 		mov [esp + 4], eax
 		call load_wav
 		cmp edi, 0
-		jne 1f
+		jne 2f
 		lea ebx, [LOAD_WAV_FILE]
 		mov ebx, [ebx]
-		1:
+		2:
 		leave
 		ret 0
 		"#,
