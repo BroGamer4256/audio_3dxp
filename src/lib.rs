@@ -578,50 +578,39 @@ unsafe extern "C" fn get_story_bgm(episode: *mut i32, a2: i32, set: i32) -> i32 
 }
 
 #[repr(u32)]
-#[derive(Clone, Copy)]
-#[allow(non_camel_case_types)]
-pub enum GameVersion {
-	Unknown = 0,
-	WM3_JP_A70 = 1 << 0,
-	WM3_US_A70 = 1 << 1,
-	WM3_CN_A70 = 1 << 2,
-	W3X_JP_A20 = 1 << 3,
-	W3X_US_A20 = 1 << 4,
-	W3X_CN_A20 = 1 << 5,
-	W3P_JP_A16 = 1 << 6,
-	W3P_US_A16 = 1 << 7,
-	W3P_CN_A16 = 1 << 8,
-	W3P_JP_B02 = 1 << 9,
-	W3P_US_B02 = 1 << 10,
-	W3P_CN_B02 = 1 << 11,
+#[derive(Clone, Copy, PartialEq)]
+pub enum GameMajor {
+	WM3 = 0,
+	W3X = 1,
+	W3P = 2,
+	Unknown,
 }
 
-impl GameVersion {
-	fn is_wm3(&self) -> bool {
-		match self {
-			Self::WM3_JP_A70 | Self::WM3_US_A70 | Self::WM3_CN_A70 => true,
-			_ => false,
-		}
-	}
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq)]
+pub enum GameMinor {
+	A = 0,
+	B = 1,
+	Unknown,
+}
 
-	fn is_w3x(&self) -> bool {
-		match self {
-			Self::W3X_JP_A20 | Self::W3X_US_A20 | Self::W3X_CN_A20 => true,
-			_ => false,
-		}
-	}
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq)]
+pub enum GameRegion {
+	JP = 1,
+	EN2 = 2,
+	EN3 = 3,
+	EN4 = 4,
+	Unknown,
+}
 
-	fn is_w3p(&self) -> bool {
-		match self {
-			Self::W3P_JP_A16
-			| Self::W3P_US_A16
-			| Self::W3P_CN_A16
-			| Self::W3P_JP_B02
-			| Self::W3P_US_B02
-			| Self::W3P_CN_B02 => true,
-			_ => false,
-		}
-	}
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq)]
+pub struct GameVersion {
+	major: GameMajor,
+	minor: GameMinor,
+	region: GameRegion,
+	revision: u32,
 }
 
 #[no_mangle]
@@ -786,20 +775,25 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 		panic!("Unknown game version");
 	}
 
-	match version {
-		GameVersion::W3P_JP_B02 => {
+	match (
+		version.major,
+		version.region,
+		version.minor,
+		version.revision,
+	) {
+		(GameMajor::W3P, GameRegion::JP, GameMinor::B, 02) => {
 			hook::write_memory(0x87EEA2C as *mut (), &[0x90, 0x90, 0x90]);
 		}
-		GameVersion::W3P_US_B02 => {
+		(GameMajor::W3P, GameRegion::EN2, GameMinor::B, 02) => {
 			hook::write_memory(0x87EF4FC as *mut (), &[0x90, 0x90, 0x90]);
 		}
-		GameVersion::W3X_US_A20 => {
+		(GameMajor::W3X, GameRegion::EN4, GameMinor::A, 20) => {
 			hook::write_memory(0x878168E as *mut (), &[0x90, 0x90, 0x90]);
 		}
-		GameVersion::WM3_JP_A70 => {
+		(GameMajor::WM3, GameRegion::JP, GameMinor::A, 70) => {
 			hook::write_memory(0x84FCA6A as *mut (), &[0x90, 0x90, 0x90]);
 		}
-		GameVersion::WM3_US_A70 => {
+		(GameMajor::WM3, GameRegion::EN3, GameMinor::A, 70) => {
 			hook::write_memory(0x84FCC6A as *mut (), &[0x90, 0x90, 0x90]);
 		}
 		_ => {
