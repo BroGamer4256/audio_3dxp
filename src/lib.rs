@@ -3,7 +3,7 @@ pub mod hook;
 
 use libc::*;
 use rand::Rng;
-use std::arch::asm;
+use std::arch::*;
 use std::ffi::{CStr, CString};
 use std::mem::transmute;
 use widestring::*;
@@ -423,7 +423,7 @@ unsafe extern "C" fn play_audio(this: *mut c_void, id: i32) -> i32 {
 static mut LOAD_WAV_FILE: *const c_char = std::ptr::null();
 #[naked]
 unsafe extern "C" fn load_wav_impl(this: *mut c_void, filepath: *const c_char) {
-	asm!(
+	naked_asm!(
 		r#"
 		enter 24, 0
 		mov eax, [ebp + 8]
@@ -438,8 +438,7 @@ unsafe extern "C" fn load_wav_impl(this: *mut c_void, filepath: *const c_char) {
 		2:
 		leave
 		ret 0
-		"#,
-		options(noreturn)
+		"#
 	)
 }
 
@@ -614,7 +613,8 @@ pub struct GameVersion {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn init(version: GameVersion) {
+pub unsafe extern "C" fn init(version: *const GameVersion) {
+	let version = version.read();
 	BGM_SETS = original_bgm_sets();
 
 	if let Ok(folders) = glob::glob("plugins/bgms/*") {
@@ -744,7 +744,7 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 		get_story_bgm as *const (),
 	)));
 
-	if version.is_w3p() {
+	if version.major == GameMajor::W3P {
 		ORIGINAL_LOAD_CARD_V386 = Some(transmute(hook::hook_symbol(
 			"_ZN14clV386CardData6assignEPKcPcb",
 			load_card_v386 as *const (),
@@ -753,7 +753,7 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 			"_ZN14clV386CardData4dataEbPc",
 			save_card_v386 as *const (),
 		)));
-	} else if version.is_w3x() {
+	} else if version.major == GameMajor::W3X {
 		ORIGINAL_LOAD_CARD_V363 = Some(transmute(hook::hook_symbol(
 			"_ZN14clV363CardData6assignEPKcPc",
 			load_card_v363 as *const (),
@@ -762,7 +762,7 @@ pub unsafe extern "C" fn init(version: GameVersion) {
 			"_ZN14clV363CardData4dataEbPc",
 			save_card_v363 as *const (),
 		)));
-	} else if version.is_wm3() {
+	} else if version.major == GameMajor::WM3 {
 		ORIGINAL_LOAD_CARD_V337 = Some(transmute(hook::hook_symbol(
 			"_ZN10clV337Card6assignEPKc",
 			load_card_v337 as *const (),
